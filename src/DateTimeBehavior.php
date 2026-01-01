@@ -18,8 +18,9 @@ class DateTimeBehavior extends Behavior
 	public function events(): array
 	{
 		return [
-			ActiveRecord::EVENT_AFTER_FIND  => 'afterFind',
-			ActiveRecord::EVENT_BEFORE_SAVE => 'beforeSave',
+        BaseActiveRecord::EVENT_AFTER_FIND => 'afterFind',
+        BaseActiveRecord::EVENT_BEFORE_INSERT => 'beforeSave',
+        BaseActiveRecord::EVENT_BEFORE_UPDATE => 'beforeSave',
 		];
 	}
 
