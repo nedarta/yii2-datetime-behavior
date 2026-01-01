@@ -1,0 +1,15 @@
+{
+  "name": "nedarta/yii2-datetime-behavior",
+  "description": "Timezone-aware datetime behavior for Yii2",
+  "type": "yii2-extension",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "nedarta\\behaviors\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=8.1",
+    "yiisoft/yii2": "^2.0"
+  }
+}
