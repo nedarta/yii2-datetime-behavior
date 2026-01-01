@@ -3,7 +3,7 @@
 namespace nedarta\behaviors;
 
 use yii\base\Behavior;
-use yii\db\ActiveRecord;
+use yii\db\BaseActiveRecord;
 
 class DateTimeBehavior extends Behavior
 {
@@ -18,9 +18,9 @@ class DateTimeBehavior extends Behavior
 	public function events(): array
 	{
 		return [
-        BaseActiveRecord::EVENT_AFTER_FIND => 'afterFind',
-        BaseActiveRecord::EVENT_BEFORE_INSERT => 'beforeSave',
-        BaseActiveRecord::EVENT_BEFORE_UPDATE => 'beforeSave',
+            BaseActiveRecord::EVENT_AFTER_FIND => 'afterFind',
+            BaseActiveRecord::EVENT_BEFORE_INSERT => 'beforeSave',
+            BaseActiveRecord::EVENT_BEFORE_UPDATE => 'beforeSave',
 		];
 	}
 
