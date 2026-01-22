@@ -5,6 +5,11 @@ use Yii;
 use yii\base\Behavior;
 use yii\db\ActiveRecord;
 
+/**
+ * DateTime Behavior for converting between unix timestamps and formatted dates
+ *
+ * @property ActiveRecord $owner
+ */
 class DateTimeBehavior extends Behavior
 {
 	/**
