@@ -18,36 +18,36 @@ class DateTimeBehavior extends Behavior
 	public array $attributes = [];
 
 	/**
+	 * @var string unix|datetime
+	 */
+	public string $dbFormat = 'unix';
+
+	/**
 	 * @var string input format from UI (for parsing and formatting)
 	 */
 	public string $inputFormat = 'Y-m-d H:i';
 
 	/**
-	 * @var string timezone where user inputs datetime
+	 * @var string|\Closure timezone where user inputs datetime
 	 */
-	public string $displayTimeZone = 'Europe/Riga';
+	public string|\Closure $displayTimeZone = 'UTC';
 
 	/**
 	 * @var string database timezone (always UTC)
 	 */
 	public string $serverTimeZone = 'UTC';
 
-	/**
-	 * @var array temporary storage for original values during validation
-	 */
-	private array $_originalValues = [];
-
 	public function events(): array
 	{
 		return [
 			ActiveRecord::EVENT_AFTER_FIND => 'afterFind',
-			ActiveRecord::EVENT_BEFORE_VALIDATE => 'beforeValidate',
-			ActiveRecord::EVENT_AFTER_VALIDATE => 'afterValidate',
+			ActiveRecord::EVENT_BEFORE_INSERT => 'beforeSave',
+			ActiveRecord::EVENT_BEFORE_UPDATE => 'beforeSave',
 		];
 	}
 
 	/**
-	 * Convert unix timestamp (UTC) → formatted string (display timezone)
+	 * Convert DB value (UTC) → formatted string (display timezone)
 	 * This runs when loading from database
 	 */
 	public function afterFind(): void
@@ -55,95 +55,96 @@ class DateTimeBehavior extends Behavior
 		foreach ($this->attributes as $attribute) {
 			$value = $this->owner->{$attribute};
 
-			if ($value === null || $value === '' || $value === 0) {
+			if ($this->isEmpty($value)) {
 				continue;
 			}
 
-			// Only convert if it's an integer (unix timestamp)
-			if (!is_int($value)) {
+			// Create DateTime from DB value
+			$dt = $this->createDateTimeFromDb($value);
+
+			if ($dt === false) {
 				continue;
 			}
 
-			// Create DateTime from timestamp (already in UTC)
-			$dt = new \DateTime();
-			$dt->setTimestamp($value);
-			// Now convert to display timezone
-			$dt->setTimezone(new \DateTimeZone($this->displayTimeZone));
+			// Convert to display timezone
+			$dt->setTimezone($this->getDisplayTimeZone());
 
 			$this->owner->{$attribute} = $dt->format($this->inputFormat);
 		}
 	}
 
 	/**
-	 * Convert UI string → unix timestamp (UTC)
-	 * This runs before validation
+	 * Convert UI string → DB value (UTC)
+	 * This runs before saving to database
 	 */
-	public function beforeValidate(): void
+	public function beforeSave(): void
 	{
 		foreach ($this->attributes as $attribute) {
 			$value = $this->owner->{$attribute};
 
-			// Store original value for potential restoration
-			$this->_originalValues[$attribute] = $value;
-
-			if ($value === null || $value === '') {
+			if ($this->isEmpty($value)) {
 				continue;
 			}
 
-			// If already unix timestamp, skip
-			if (is_int($value)) {
-				continue;
-			}
+			// If it matches db format, parsed as original, skip?
+			// But here we rely on the attribute being dirty and possibly in input format.
+			// Ideally we should check if $value is already in DB format?
+			// But for 'unix', checking if it is int is easy. For 'datetime', it's harder to distinguish from input format.
+			// We'll process it if we can parse it from inputFormat.
 
 			$dt = \DateTime::createFromFormat(
 				$this->inputFormat,
 				$value,
-				new \DateTimeZone($this->displayTimeZone)
+				$this->getDisplayTimeZone()
 			);
 
 			if ($dt === false) {
-				// Invalid format - keep original value for validation error display
+				// Could not parse as input format.
+				// Assume it might already be in DB format or invalid.
+				// We do not touch it.
 				continue;
 			}
 
-			// Convert to UTC and get timestamp
+			// Convert to Server Timezone (UTC)
 			$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
-			$this->owner->{$attribute} = $dt->getTimestamp();
+
+			// Store in DB format
+			if ($this->dbFormat === 'datetime') {
+				$this->owner->{$attribute} = $dt->format('Y-m-d H:i:s');
+			} else {
+				$this->owner->{$attribute} = $dt->getTimestamp();
+			}
 		}
 	}
 
-	/**
-	 * Convert back to formatted string after validation
-	 * So form displays correctly on validation errors
-	 */
-	public function afterValidate(): void
+	protected function getDisplayTimeZone(): \DateTimeZone
 	{
-		// Only convert back if there were validation errors
-		if ($this->owner->hasErrors()) {
-			foreach ($this->attributes as $attribute) {
-				$value = $this->owner->{$attribute};
+		$tz = $this->displayTimeZone;
+		if ($tz instanceof \Closure) {
+			$tz = call_user_func($tz);
+		}
+		return new \DateTimeZone($tz);
+	}
 
-				// If attribute has specific errors, restore original value
-				if ($this->owner->hasErrors($attribute)) {
-					$this->owner->{$attribute} = $this->_originalValues[$attribute] ?? $value;
-					continue;
-				}
+	protected function createDateTimeFromDb(mixed $value): \DateTime|false
+	{
+		$tz = new \DateTimeZone($this->serverTimeZone);
 
-				if ($value === null || $value === '' || !is_int($value)) {
-					continue;
-				}
-
-				// Create DateTime from timestamp
-				$dt = new \DateTime();
-				$dt->setTimestamp($value);
-				// Convert to display timezone
-				$dt->setTimezone(new \DateTimeZone($this->displayTimeZone));
-
-				$this->owner->{$attribute} = $dt->format($this->inputFormat);
+		if ($this->dbFormat === 'unix') {
+			if (!is_numeric($value)) {
+				return false;
 			}
+			$dt = new \DateTime('now', $tz);
+			$dt->setTimestamp((int)$value);
+			return $dt;
 		}
 
-		// Clear temporary storage
-		$this->_originalValues = [];
+		// DateTime format
+		return \DateTime::createFromFormat('Y-m-d H:i:s', $value, $tz);
+	}
+
+	protected function isEmpty(mixed $value): bool
+	{
+		return $value === null || $value === '' || $value === 0;
 	}
 }
