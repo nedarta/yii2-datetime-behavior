@@ -22,5 +22,11 @@
     "allow-plugins": {
       "yiisoft/yii2-composer": true
     }
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^12.5"
   }
 }

@@ -171,7 +171,7 @@ MIT
 
 ## Roadmap
 
-- [ ] PHPUnit test suite
+- [x] PHPUnit test suite
 - [ ] Read-only / write-only modes
 - [ ] Per-attribute format overrides
 - [ ] Optional convention-based trait
