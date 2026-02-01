@@ -78,6 +78,19 @@ class DateTimeBehaviorTest extends TestCase
     protected function tearDown(): void
     {
         Yii::$app->db->createCommand()->dropTable('test_active_record')->execute();
+        
+        // Clean up error handlers
+        while (set_error_handler(function() {})) {
+            restore_error_handler();
+            restore_error_handler();
+        }
+        
+        while (set_exception_handler(function() {})) {
+            restore_exception_handler();
+            restore_exception_handler();
+        }
+        
+        parent::tearDown();
     }
 
     protected function getModel($dbFormat = 'unix')

@@ -4,7 +4,9 @@
          bootstrap="tests/bootstrap.php"
          colors="true"
          beStrictAboutChangesToGlobalState="false"
+         beStrictAboutTestsThatDoNotTestAnything="false"
          failOnRisky="false"
+         failOnWarning="false"
          cacheDirectory=".phpunit.cache">
     <testsuites>
         <testsuite name="Yii2 DateTime Behavior Test Suite">

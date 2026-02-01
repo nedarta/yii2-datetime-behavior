@@ -163,6 +163,19 @@ This extension operates strictly at the **model layer**.
 
 ---
 
+---
+
+## Testing
+
+Run the test suite via Composer:
+
+```bash
+composer test
+```
+**Note:** You may see "Risky" test warnings in the output. This is expected behavior due to Yii2's global error handler manipulation during tests and does not indicate test failure.
+
+---
+
 ## License
 
 MIT
