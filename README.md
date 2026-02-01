@@ -171,10 +171,10 @@ MIT
 
 ## Roadmap
 
-- PHPUnit test suite
-- Read-only / write-only modes
-- Per-attribute format overrides
-- Optional convention-based trait
-- Support for additional database formats (e.g. TIMESTAMP)
-- Integration with popular date/time widgets
-- Support for batch operations (e.g. `updateAll()`)
+- [ ] PHPUnit test suite
+- [ ] Read-only / write-only modes
+- [ ] Per-attribute format overrides
+- [ ] Optional convention-based trait
+- [ ] Support for additional database formats (e.g. TIMESTAMP)
+- [ ] Integration with popular date/time widgets
+- [ ] Support for batch operations (e.g. `updateAll()`)
