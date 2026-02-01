@@ -42,15 +42,17 @@ class Post extends \yii\db\ActiveRecord
         return [
             [
                 'class' => DateTimeBehavior::class,
-                'attributes' => ['published_at'],
+                'attributes' => ['created_at', 'scheduled_at'],
 
                 // Database storage
-                'dbFormat' => 'unix',          // unix | datetime
+                'dbFormat' => 'unix',          // 'unix' or 'datetime'
                 'serverTimeZone' => 'UTC',
 
                 // User-facing format
                 'inputFormat' => 'Y-m-d H:i',
-                'displayTimeZone' => 'Europe/Stockholm',
+                'displayTimeZone' => function() {
+                    return Yii::$app->user->identity->timezone ?? 'Europe/Riga';
+                },
             ],
         ];
     }
@@ -128,16 +130,6 @@ Usage:
 
 ---
 
-## Dynamic User Timezones
-
-You can use closures for dynamic timezone resolution:
-
-```php
-'displayTimeZone' => fn () =>
-    Yii::$app->user->identity->timezone ?? 'UTC',
-```
-
----
 
 ## What This Extension Does NOT Do
 

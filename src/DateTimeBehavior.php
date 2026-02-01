@@ -37,10 +37,17 @@ class DateTimeBehavior extends Behavior
 	 */
 	public string $serverTimeZone = 'UTC';
 
+	/**
+	 * @var array temporary storage for original values during validation
+	 */
+	private array $_originalValues = [];
+
 	public function events(): array
 	{
 		return [
 			ActiveRecord::EVENT_AFTER_FIND => 'afterFind',
+			ActiveRecord::EVENT_BEFORE_VALIDATE => 'beforeValidate',
+			ActiveRecord::EVENT_AFTER_VALIDATE => 'afterValidate',
 			ActiveRecord::EVENT_BEFORE_INSERT => 'beforeSave',
 			ActiveRecord::EVENT_BEFORE_UPDATE => 'beforeSave',
 		];
@@ -74,6 +81,34 @@ class DateTimeBehavior extends Behavior
 	}
 
 	/**
+	 * Store original values before validation
+	 */
+	public function beforeValidate(): void
+	{
+		foreach ($this->attributes as $attribute) {
+			$this->_originalValues[$attribute] = $this->owner->{$attribute};
+		}
+	}
+
+	/**
+	 * Restore original values if validation failed
+	 */
+	public function afterValidate(): void
+	{
+		if ($this->owner->hasErrors()) {
+			foreach ($this->attributes as $attribute) {
+				// Restore original value so user sees what they typed
+				if ($this->owner->hasErrors($attribute)) {
+					$this->owner->{$attribute} = $this->_originalValues[$attribute] ?? null;
+				}
+			}
+		}
+		
+		// Clear temporary storage
+		$this->_originalValues = [];
+	}
+
+	/**
 	 * Convert UI string → DB value (UTC)
 	 * This runs before saving to database
 	 */
@@ -86,11 +121,10 @@ class DateTimeBehavior extends Behavior
 				continue;
 			}
 
-			// If it matches db format, parsed as original, skip?
-			// But here we rely on the attribute being dirty and possibly in input format.
-			// Ideally we should check if $value is already in DB format?
-			// But for 'unix', checking if it is int is easy. For 'datetime', it's harder to distinguish from input format.
-			// We'll process it if we can parse it from inputFormat.
+			// Skip if already in DB format
+			if ($this->isDbFormat($value)) {
+				continue;
+			}
 
 			$dt = \DateTime::createFromFormat(
 				$this->inputFormat,
@@ -99,9 +133,7 @@ class DateTimeBehavior extends Behavior
 			);
 
 			if ($dt === false) {
-				// Could not parse as input format.
-				// Assume it might already be in DB format or invalid.
-				// We do not touch it.
+				// Could not parse as input format - leave as is for validation to catch
 				continue;
 			}
 
@@ -117,6 +149,26 @@ class DateTimeBehavior extends Behavior
 		}
 	}
 
+	/**
+	 * Check if value is already in database format
+	 */
+	protected function isDbFormat(mixed $value): bool
+	{
+		if ($this->dbFormat === 'unix') {
+			return is_int($value);
+		}
+
+		// For datetime format, check if it matches Y-m-d H:i:s pattern
+		if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Get display timezone (resolve closure if needed)
+	 */
 	protected function getDisplayTimeZone(): \DateTimeZone
 	{
 		$tz = $this->displayTimeZone;
@@ -126,6 +178,9 @@ class DateTimeBehavior extends Behavior
 		return new \DateTimeZone($tz);
 	}
 
+	/**
+	 * Create DateTime object from database value
+	 */
 	protected function createDateTimeFromDb(mixed $value): \DateTime|false
 	{
 		$tz = new \DateTimeZone($this->serverTimeZone);
@@ -143,8 +198,16 @@ class DateTimeBehavior extends Behavior
 		return \DateTime::createFromFormat('Y-m-d H:i:s', $value, $tz);
 	}
 
+	/**
+	 * Check if value is empty
+	 */
 	protected function isEmpty(mixed $value): bool
 	{
-		return $value === null || $value === '' || $value === 0;
+		// Don't treat 0 as empty for unix timestamps (it's a valid date: 1970-01-01)
+		if ($this->dbFormat === 'unix' && $value === 0) {
+			return false;
+		}
+		
+		return $value === null || $value === '';
 	}
 }
