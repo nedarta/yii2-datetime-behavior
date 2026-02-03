@@ -76,7 +76,8 @@ class DateTimeBehavior extends Behavior
 			// Convert to display timezone
 			$dt->setTimezone($this->getDisplayTimeZone());
 
-			$this->owner->{$attribute} = $dt->format($this->inputFormat);
+			// Append offset so Yii formatter knows it's already localized
+			$this->owner->{$attribute} = $dt->format($this->inputFormat . ' P');
 		}
 	}
 
@@ -126,11 +127,7 @@ class DateTimeBehavior extends Behavior
 				continue;
 			}
 
-			$dt = \DateTime::createFromFormat(
-				$this->inputFormat,
-				$value,
-				$this->getDisplayTimeZone()
-			);
+			$dt = $this->parseInput($value);
 
 			if ($dt === false) {
 				// Could not parse as input format - leave as is for validation to catch
@@ -147,6 +144,57 @@ class DateTimeBehavior extends Behavior
 				$this->owner->{$attribute} = $dt->getTimestamp();
 			}
 		}
+	}
+
+	/**
+	 * Helper to parse input string using behavior config
+	 */
+	protected function parseInput(mixed $value): \DateTime|false
+	{
+		$value = (string)$value;
+		
+		// Try parsing with timezone offset first (from afterFind)
+		$dt = \DateTime::createFromFormat(
+			'!' . $this->inputFormat . ' P',
+			$value,
+			$this->getDisplayTimeZone()
+		);
+
+		if ($dt === false) {
+			// Try parsing without offset (from UI form)
+			$dt = \DateTime::createFromFormat(
+				'!' . $this->inputFormat,
+				$value,
+				$this->getDisplayTimeZone()
+			);
+		}
+
+		return $dt;
+	}
+
+	/**
+	 * Get UTC timestamp for an attribute, handling both raw and formatted values
+	 */
+	public function toTimestamp(string $attribute): ?int
+	{
+		$value = $this->owner->{$attribute};
+
+		if ($this->isEmpty($value)) {
+			return null;
+		}
+
+		if (is_numeric($value)) {
+			return (int)$value;
+		}
+
+		$dt = $this->parseInput($value);
+		if ($dt === false) {
+			return null;
+		}
+
+		// Convert to UTC to get a standard timestamp
+		$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
+		return $dt->getTimestamp();
 	}
 
 	/**
