@@ -239,4 +239,3 @@ MIT
 - [x] Query helper `toDbValue()` for correct filtering
 - [ ] Read-only / write-only modes
 - [ ] Integration with popular date/time widgets
-- [ ] Support for batch operations (e.g. `updateAll()`)
