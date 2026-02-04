@@ -13,6 +13,8 @@ between **database format** and **user-facing format**, while keeping your datab
 - Automatic timezone conversion (UI ↔ DB)
 - Works on `afterFind` and `beforeSave`
 - Supports **UNIX timestamps** and **DATETIME** columns
+- **Timezone offset inclusion** for robust Formatter integration
+- Includes `toTimestamp()` helper for UTC-normalized timestamps
 - Multiple attributes per model
 - Ready for multi-timezone users
 - Easy to test, no UI or widget coupling
@@ -63,12 +65,12 @@ class Post extends \yii\db\ActiveRecord
 
 ## What Happens Automatically
 
-| Step | Value |
-|----|------|
-| Database value | `1704031200` |
-| After `find()` | `2024-12-31 13:00` |
-| User edits | `2025-01-01 09:30` |
-| Before `save()` | `1735710600` |
+| Step | Value | Description |
+|----|------|-------------|
+| Database value | `1704031200` | UTC Unix Timestamp |
+| After `find()` | `2023-12-31 16:00 +02:00` | Local time with offset |
+| User edits | `2024-01-01 10:00` | UI Form input (no offset) |
+| Before `save()` | `1704103200` | Converted back to UTC |
 
 The database always stays in **UTC / UNIX** format.  
 The model attribute always contains a **user-facing value**.
@@ -94,39 +96,37 @@ The model attribute always contains a **user-facing value**.
 1. Reads value from database
 2. Interprets it using `serverTimeZone`
 3. Converts to `displayTimeZone`
-4. Formats using `inputFormat`
+4. Formats as `inputFormat` + `P` (timezone offset)
 
 ### UI → DB (`beforeSave`)
 
-1. Parses user input using `inputFormat`
-2. Interprets it in `displayTimeZone`
+1. Parses user input using `inputFormat` (tries both with and without offset)
+2. Interprets it in `displayTimeZone` (unless offset provided)
 3. Converts to `serverTimeZone`
 4. Stores as UNIX timestamp or DATETIME string
 
 ---
 
-## Yii2 Formatter Compatibility (`asDateTime()`)
-
-This behavior is fully compatible with `Yii::$app->formatter`.
-
-### Recommended setup
-
-```php
-'formatter' => [
-    'class' => yii\i18n\Formatter::class,
-    'timeZone' => 'Europe/Stockholm',
-],
-```
+This behavior is fully compatible with `Yii::$app->formatter`. By including the timezone offset in the model attribute, the formatter correctly identifies the time as already localized.
 
 Usage:
 
 ```php
+// No extra parsing needed in views
 <?= Yii::$app->formatter->asDateTime($model->published_at) ?>
 ```
 
-> Important:  
-> When using this behavior, model attributes already contain **UI-localized values**.
-> Always ensure the formatter timezone matches `displayTimeZone`.
+---
+
+## Helper Methods
+
+### `toTimestamp($attribute)`
+
+Returns a UTC-normalized UNIX timestamp for a given attribute, regardless of whether the attribute currently holds a raw database value or a localized UI string.
+
+```php
+$timestamp = $model->getBehavior('dt')->toTimestamp('created_at');
+```
 
 ---
 

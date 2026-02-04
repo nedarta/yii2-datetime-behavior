@@ -123,7 +123,7 @@ class DateTimeBehaviorTest extends TestCase
         ])->execute();
 
         $model = TestActiveRecord::find()->one();
-        $this->assertEquals('2024-01-01 12:00', $model->created_at, 'Should convert to Riga time');
+        $this->assertEquals('2024-01-01 12:00 +02:00', $model->created_at, 'Should convert to Riga time with offset');
     }
 
     public function testUiToDbDateTime()
@@ -143,7 +143,7 @@ class DateTimeBehaviorTest extends TestCase
         ])->execute();
 
         $model = TestActiveRecordDateTime::find()->one();
-        $this->assertEquals('2024-01-01 12:00', $model->created_at, 'Should convert to Riga time');
+        $this->assertEquals('2024-01-01 12:00 +02:00', $model->created_at, 'Should convert to Riga time with offset');
     }
 
     public function testZeroTimestampUnix()
@@ -158,10 +158,46 @@ class DateTimeBehaviorTest extends TestCase
         // Let's calculate expected
         $bg = new \DateTime('@0');
         $bg->setTimezone(new \DateTimeZone('Europe/Riga'));
-        $expected = $bg->format('Y-m-d H:i');
+        $expected = $bg->format('Y-m-d H:i P');
 
-        $this->assertEquals($expected, $model->created_at);
+        $this->assertEquals($expected, $model->created_at, 'Should handle zero timestamp with offset');
         $this->assertNotEmpty($model->created_at);
+    }
+
+    public function testToTimestamp()
+    {
+        $model = $this->getModel('unix');
+        
+        // From UI format (no offset)
+        $model->created_at = '2024-01-01 12:00';
+        $this->assertEquals(1704103200, $model->getBehavior('dt')->toTimestamp('created_at'));
+
+        // From Display format (with offset)
+        $model->created_at = '2024-01-01 12:00 +02:00';
+        $this->assertEquals(1704103200, $model->getBehavior('dt')->toTimestamp('created_at'));
+
+        // Raw timestamp
+        $model->created_at = 1704103200;
+        $this->assertEquals(1704103200, $model->getBehavior('dt')->toTimestamp('created_at'));
+
+        // Null/Empty
+        $model->created_at = null;
+        $this->assertNull($model->getBehavior('dt')->toTimestamp('created_at'));
+    }
+
+    public function testUiInputVariations()
+    {
+        $model = $this->getModel('unix');
+        
+        // Input without offset (from form)
+        $model->created_at = '2024-01-01 12:00';
+        $model->save(false);
+        $this->assertEquals(1704103200, $model->created_at, 'Should parse input without offset');
+
+        // Input with offset (re-saving same value)
+        $model->created_at = '2024-01-01 12:00 +02:00';
+        $model->save(false);
+        $this->assertEquals(1704103200, $model->created_at, 'Should parse input with offset');
     }
 
     public function testSafetyCheckPreFormatted()
