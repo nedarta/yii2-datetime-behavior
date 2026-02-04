@@ -494,4 +494,76 @@ class DateTimeBehaviorTest extends TestCase
         
         $this->assertEquals($input, $model->created_at, 'Should be restored to original garbage input');
     }
+
+    /**
+     * @covers ::beforeSave
+     * @covers ::formatForDb
+     */
+    public function testQueryFilteringMismatch()
+    {
+        // 1. It is 11:37 in Riga (+2)
+        // 2. We have an event today at 12:30 in Riga
+        
+        $model = $this->getModel('datetime');
+        $model->created_at = '2026-02-04 12:30'; // Entered in Riga time
+        $model->save(false); // Stored as 10:30 UTC
+        
+        // 3. Current time in Riga is 11:37
+        $nowRiga = '2026-02-04 11:37';
+        
+        // 4. Querying using Local Time (WRONG)
+        // Comparison: 10:30 UTC string < 11:37 Local string string.
+        $hidden = (new \yii\db\Query())
+            ->from('test_active_record')
+            ->where(['id' => $model->id])
+            ->andWhere(['>', 'created_at', $nowRiga])
+            ->one();
+            
+        $this->assertFalse((bool)$hidden, 'Event is hidden because we compared 10:30 UTC with 11:37 Local!');
+
+        // 5. Querying using UTC Time (MANUAL RIGHT)
+        $nowUtc = '2026-02-04 09:37';
+        $visible = (new \yii\db\Query())
+            ->from('test_active_record')
+            ->where(['id' => $model->id])
+            ->andWhere(['>', 'created_at', $nowUtc])
+            ->one();
+            
+        $this->assertNotEmpty($visible, 'Event should be visible when comparing with UTC now!');
+
+        // 6. Querying using toDbValue helper (AUTOMATIC RIGHT)
+        $nowDb = $model->getBehavior('dt')->toDbValue('2026-02-04 11:37'); // Riga time as input
+        $this->assertEquals('2026-02-04 09:37:00', $nowDb, 'Should convert local string to UTC DB string');
+
+        $visibleHelper = (new \yii\db\Query())
+            ->from('test_active_record')
+            ->where(['id' => $model->id])
+            ->andWhere(['>', 'created_at', $nowDb])
+            ->one();
+
+        $this->assertNotEmpty($visibleHelper, 'Event should be visible when using toDbValue helper!');
+    }
+
+    /**
+     * @covers ::toDbValue
+     * @covers ::formatForDb
+     */
+    public function testToDbValue()
+    {
+        $model = $this->getModel('unix');
+        $behavior = $model->getBehavior('dt');
+
+        // 'now' should return a numeric timestamp
+        $this->assertIsInt($behavior->toDbValue('now'));
+
+        // Local string should return UTC timestamp
+        $this->assertEquals(1704103200, $behavior->toDbValue('2024-01-01 12:00')); // Riga 12:00 -> 10:00 UTC
+
+        // Already DB format should remain same
+        $this->assertEquals(1704103200, $behavior->toDbValue(1704103200));
+        
+        // Null/Empty
+        $this->assertNull($behavior->toDbValue(''));
+        $this->assertNull($behavior->toDbValue(null));
+    }
 }

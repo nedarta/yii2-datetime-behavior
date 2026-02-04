@@ -131,6 +131,29 @@ $timestamp = $model->getBehavior('dt')->toTimestamp('created_at');
 
 ---
 
+## Querying
+
+When querying the database (e.g., filtering for "today's events"), you must compare against UTC time. You can use the `toDbValue()` helper to correctly format your filter values:
+
+```php
+$model = new Event();
+$dt = $model->getBehavior('dt');
+
+// Correctly format 'now' (or any local date string) for the DB
+$now = $dt->toDbValue('now'); 
+
+$query->andWhere(['>=', 'datetime', $now]);
+```
+
+Alternatively, if you are using `unix` timestamps, you can simply use the PHP `time()` function:
+
+```php
+// Only for dbFormat => 'unix'
+$query->andWhere(['>=', 'datetime', time()]);
+```
+
+---
+
 ## Batch Operations
 
 Since `ActiveRecord::updateAll()` and `insertAll()` do not trigger model behaviors, you can use the `normalize()` method to convert your data array before passing it to the database:
@@ -205,6 +228,7 @@ MIT
 - [x] PHPUnit test suite
 - [x] Support for additional database formats (date, time, custom)
 - [x] Support for batch operations (e.g. `updateAll()`)
+- [x] Query helper `toDbValue()` for correct filtering
 - [ ] Read-only / write-only modes
 - [ ] Integration with popular date/time widgets
 - [ ] Support for batch operations (e.g. `updateAll()`)

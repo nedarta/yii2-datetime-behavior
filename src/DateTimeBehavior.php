@@ -116,25 +116,7 @@ class DateTimeBehavior extends Behavior
 	public function beforeSave(): void
 	{
 		foreach ($this->attributes as $attribute) {
-			$value = $this->owner->{$attribute};
-
-			if ($this->isEmpty($value)) {
-				continue;
-			}
-
-			// Skip if already in DB format
-			if ($this->isDbFormat($value)) {
-				continue;
-			}
-
-			$dt = $this->parseInput($value);
-
-			if ($dt === false) {
-				// Could not parse as input format - leave as is for validation to catch
-				continue;
-			}
-
-			$this->owner->{$attribute} = $this->formatForDb($dt);
+			$this->owner->{$attribute} = $this->toDbValue($this->owner->{$attribute});
 		}
 	}
 
@@ -152,17 +134,42 @@ class DateTimeBehavior extends Behavior
 				continue;
 			}
 
-			if ($this->isEmpty($value) || $this->isDbFormat($value)) {
-				continue;
-			}
-
-			$dt = $this->parseInput($value);
-			if ($dt !== false) {
-				$data[$attribute] = $this->formatForDb($dt);
-			}
+			$data[$attribute] = $this->toDbValue($value);
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Convert any value to database format (UTC + correct dbFormat)
+	 * Useful for query filters.
+	 * 
+	 * @param mixed $value UI string, 'now', or raw value
+	 * @return string|int|null
+	 */
+	public function toDbValue(mixed $value): string|int|null
+	{
+		if ($this->isEmpty($value)) {
+			return null;
+		}
+
+		if ($value === 'now') {
+			$dt = new \DateTime('now', new \DateTimeZone('UTC'));
+			return $this->formatForDb($dt);
+		}
+
+		// If it's already in DB format, return as is (to avoid double conversion)
+		if ($this->isDbFormat($value)) {
+			return $value;
+		}
+
+		$dt = $this->parseInput($value);
+		if ($dt === false) {
+			// Could not parse as input format - return as is for DB to maybe handle or fail
+			return $value;
+		}
+
+		return $this->formatForDb($dt);
 	}
 
 	/**
