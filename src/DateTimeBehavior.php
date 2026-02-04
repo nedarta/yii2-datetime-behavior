@@ -18,7 +18,7 @@ class DateTimeBehavior extends Behavior
 	public array $attributes = [];
 
 	/**
-	 * @var string unix|datetime
+	 * @var string unix|datetime|date|time or any custom PHP date format string (e.g. 'Ymd')
 	 */
 	public string $dbFormat = 'unix';
 
@@ -138,10 +138,16 @@ class DateTimeBehavior extends Behavior
 			$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
 
 			// Store in DB format
-			if ($this->dbFormat === 'datetime') {
-				$this->owner->{$attribute} = $dt->format('Y-m-d H:i:s');
-			} else {
+			if ($this->dbFormat === 'unix') {
 				$this->owner->{$attribute} = $dt->getTimestamp();
+			} else {
+				$format = match ($this->dbFormat) {
+					'datetime' => 'Y-m-d H:i:s',
+					'date' => 'Y-m-d',
+					'time' => 'H:i:s',
+					default => $this->dbFormat,
+				};
+				$this->owner->{$attribute} = $dt->format($format);
 			}
 		}
 	}
@@ -203,15 +209,23 @@ class DateTimeBehavior extends Behavior
 	protected function isDbFormat(mixed $value): bool
 	{
 		if ($this->dbFormat === 'unix') {
-			return is_int($value);
+			return is_int($value) || (is_string($value) && ctype_digit($value));
 		}
 
-		// For datetime format, check if it matches Y-m-d H:i:s pattern
-		if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
-			return true;
+		if (!is_string($value)) {
+			return false;
 		}
 
-		return false;
+		$format = match ($this->dbFormat) {
+			'datetime' => 'Y-m-d H:i:s',
+			'date' => 'Y-m-d',
+			'time' => 'H:i:s',
+			default => $this->dbFormat,
+		};
+
+		// Try to parse it. If it parses perfectly, it's likely the DB format.
+		$dt = \DateTime::createFromFormat('!' . $format, $value);
+		return $dt && $dt->format($format) === $value;
 	}
 
 	/**
@@ -242,8 +256,15 @@ class DateTimeBehavior extends Behavior
 			return $dt;
 		}
 
-		// DateTime format
-		return \DateTime::createFromFormat('Y-m-d H:i:s', $value, $tz);
+		$format = match ($this->dbFormat) {
+			'datetime' => 'Y-m-d H:i:s',
+			'date' => 'Y-m-d',
+			'time' => 'H:i:s',
+			default => $this->dbFormat,
+		};
+
+		// Use ! to reset time for formats that don't include it
+		return \DateTime::createFromFormat('!' . $format, (string)$value, $tz);
 	}
 
 	/**

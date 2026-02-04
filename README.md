@@ -47,7 +47,7 @@ class Post extends \yii\db\ActiveRecord
                 'attributes' => ['created_at', 'scheduled_at'],
 
                 // Database storage
-                'dbFormat' => 'unix',          // 'unix' or 'datetime'
+                'dbFormat' => 'unix',          // 'unix', 'datetime', 'date', 'time', or custom format like 'Ymd'
                 'serverTimeZone' => 'UTC',
 
                 // User-facing format
@@ -82,7 +82,7 @@ The model attribute always contains a **user-facing value**.
 | Option | Type | Default | Description |
 |-----|-----|--------|------------|
 | `attributes` | `array` | `[]` | Attributes to convert |
-| `dbFormat` | `string` | `unix` | `unix` or `datetime` |
+| `dbFormat` | `string` | `unix` | `unix`, `datetime`, `date`, `time`, or custom PHP format string (e.g. `Y-m-d`) |
 | `inputFormat` | `string` | `Y-m-d H:i` | User / UI format |
 | `serverTimeZone` | `string` | `UTC` | Database timezone |
 | `displayTimeZone` | `string` | `UTC` | User-facing timezone |
@@ -185,9 +185,7 @@ MIT
 ## Roadmap
 
 - [x] PHPUnit test suite
+- [x] Support for additional database formats (date, time, custom)
 - [ ] Read-only / write-only modes
-- [ ] Per-attribute format overrides
-- [ ] Optional convention-based trait
-- [ ] Support for additional database formats (e.g. TIMESTAMP)
 - [ ] Integration with popular date/time widgets
 - [ ] Support for batch operations (e.g. `updateAll()`)

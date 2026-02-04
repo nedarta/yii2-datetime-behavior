@@ -61,6 +61,57 @@ class TestActiveRecordDateTime extends TestActiveRecord
     }
 }
 
+class TestActiveRecordDate extends TestActiveRecord
+{
+    public function behaviors()
+    {
+        return [
+            'dt' => [
+                'class' => DateTimeBehavior::class,
+                'attributes' => ['created_at'],
+                'dbFormat' => 'date',
+                'inputFormat' => 'Y-m-d H:i',
+                'displayTimeZone' => 'Europe/Riga',
+                'serverTimeZone' => 'UTC',
+            ]
+        ];
+    }
+}
+
+class TestActiveRecordTime extends TestActiveRecord
+{
+    public function behaviors()
+    {
+        return [
+            'dt' => [
+                'class' => DateTimeBehavior::class,
+                'attributes' => ['created_at'],
+                'dbFormat' => 'time',
+                'inputFormat' => 'H:i',
+                'displayTimeZone' => 'Europe/Riga',
+                'serverTimeZone' => 'UTC',
+            ]
+        ];
+    }
+}
+
+class TestActiveRecordCustom extends TestActiveRecord
+{
+    public function behaviors()
+    {
+        return [
+            'dt' => [
+                'class' => DateTimeBehavior::class,
+                'attributes' => ['created_at'],
+                'dbFormat' => 'YmdHis',
+                'inputFormat' => 'Y-m-d H:i',
+                'displayTimeZone' => 'Europe/Riga',
+                'serverTimeZone' => 'UTC',
+            ]
+        ];
+    }
+}
+
 class DateTimeBehaviorTest extends TestCase
 {
     protected function setUp(): void
@@ -95,10 +146,13 @@ class DateTimeBehaviorTest extends TestCase
 
     protected function getModel($dbFormat = 'unix')
     {
-        if ($dbFormat === 'datetime') {
-            return new TestActiveRecordDateTime();
-        }
-        return new TestActiveRecord();
+        return match ($dbFormat) {
+            'datetime' => new TestActiveRecordDateTime(),
+            'date' => new TestActiveRecordDate(),
+            'time' => new TestActiveRecordTime(),
+            'custom' => new TestActiveRecordCustom(),
+            default => new TestActiveRecord(),
+        };
     }
 
     public function testUiToDbUnix()
@@ -144,6 +198,46 @@ class DateTimeBehaviorTest extends TestCase
 
         $model = TestActiveRecordDateTime::find()->one();
         $this->assertEquals('2024-01-01 12:00 +02:00', $model->created_at, 'Should convert to Riga time with offset');
+    }
+
+    public function testDateOutput()
+    {
+        $model = $this->getModel('date');
+        $model->created_at = '2024-01-01 12:00'; // Riga
+        $model->save(false);
+
+        $inDb = (new \yii\db\Query())->from('test_active_record')->where(['id' => $model->id])->one();
+        $this->assertEquals('2024-01-01', $inDb['created_at'], 'Database should contain UTC date string');
+
+        // Load back
+        $model = TestActiveRecordDate::findOne($model->id);
+        $this->assertEquals('2024-01-01 02:00 +02:00', $model->created_at, 'Should handle date format (time resets to 00:00 UTC)');
+    }
+
+
+    public function testTimeOutput()
+    {
+        $model = $this->getModel('time');
+        $input = '12:00';
+        $model->created_at = $input; // Riga
+        $model->save(false);
+
+        $dt = \DateTime::createFromFormat('!H:i', $input, new \DateTimeZone('Europe/Riga'));
+        $dt->setTimezone(new \DateTimeZone('UTC'));
+        $expected = $dt->format('H:i:s');
+
+        $inDb = (new \yii\db\Query())->from('test_active_record')->where(['id' => $model->id])->one();
+        $this->assertEquals($expected, $inDb['created_at'], 'Database should contain calculated UTC time string');
+    }
+
+    public function testCustomOutput()
+    {
+        $model = $this->getModel('custom');
+        $model->created_at = '2024-01-01 12:00'; // Riga
+        $model->save(false);
+
+        $inDb = (new \yii\db\Query())->from('test_active_record')->where(['id' => $model->id])->one();
+        $this->assertEquals('20240101100000', $inDb['created_at'], 'Database should contain custom format string');
     }
 
     public function testZeroTimestampUnix()
