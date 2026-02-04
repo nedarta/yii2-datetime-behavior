@@ -112,6 +112,38 @@ class TestActiveRecordCustom extends TestActiveRecord
     }
 }
 
+class TestActiveRecordTokyo extends TestActiveRecord
+{
+    public function behaviors()
+    {
+        return [
+            'dt' => [
+                'class' => DateTimeBehavior::class,
+                'attributes' => ['created_at'],
+                'dbFormat' => 'unix',
+                'inputFormat' => 'Y-m-d H:i',
+                'displayTimeZone' => 'Asia/Tokyo',
+                'serverTimeZone' => 'UTC',
+            ]
+        ];
+    }
+}
+
+class TestActiveRecordFallback extends TestActiveRecord
+{
+    public function behaviors()
+    {
+        return [
+            'dt' => [
+                'class' => DateTimeBehavior::class,
+                'attributes' => ['created_at'],
+                'dbFormat' => 'unix',
+                // displayTimeZone is null by default now
+            ]
+        ];
+    }
+}
+
 class DateTimeBehaviorTest extends TestCase
 {
     protected function setUp(): void
@@ -151,6 +183,8 @@ class DateTimeBehaviorTest extends TestCase
             'date' => new TestActiveRecordDate(),
             'time' => new TestActiveRecordTime(),
             'custom' => new TestActiveRecordCustom(),
+            'tokyo' => new TestActiveRecordTokyo(),
+            'fallback' => new TestActiveRecordFallback(),
             default => new TestActiveRecord(),
         };
     }
@@ -198,6 +232,36 @@ class DateTimeBehaviorTest extends TestCase
 
         $model = TestActiveRecordDateTime::find()->one();
         $this->assertEquals('2024-01-01 12:00 +02:00', $model->created_at, 'Should convert to Riga time with offset');
+    }
+
+    public function testAsiaTokyo()
+    {
+        // 10:00 UTC -> 19:00 Tokyo (JST is UTC+9)
+        Yii::$app->db->createCommand()->insert('test_active_record', [
+            'created_at' => 1704103200, // 10:00 UTC
+        ])->execute();
+
+        $model = TestActiveRecordTokyo::find()->one();
+        $this->assertEquals('2024-01-01 19:00 +09:00', $model->created_at, 'Should convert to Tokyo time (+9)');
+    }
+
+    public function testGlobalConfigFallback()
+    {
+        // Mock global timezone
+        $oldTz = Yii::$app->timeZone;
+        Yii::$app->timeZone = 'Asia/Tokyo';
+        
+        // 10:00 UTC -> 19:00 Tokyo
+        Yii::$app->db->createCommand()->insert('test_active_record', [
+            'created_at' => 1704103200,
+        ])->execute();
+
+        $model = TestActiveRecordFallback::find()->one();
+        
+        // Restore before assertion in case it fails
+        Yii::$app->timeZone = $oldTz;
+
+        $this->assertEquals('2024-01-01 19:00 +09:00', $model->created_at, 'Should fallback to Yii::$app->timeZone');
     }
 
     public function testDateOutput()

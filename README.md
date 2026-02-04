@@ -85,7 +85,7 @@ The model attribute always contains a **user-facing value**.
 | `dbFormat` | `string` | `unix` | `unix`, `datetime`, `date`, `time`, or custom PHP format string (e.g. `Y-m-d`) |
 | `inputFormat` | `string` | `Y-m-d H:i` | User / UI format |
 | `serverTimeZone` | `string` | `UTC` | Database timezone |
-| `displayTimeZone` | `string` | `UTC` | User-facing timezone |
+| `displayTimeZone` | `string|null` | `null` | User-facing timezone. If `null`, falls back to `Yii::$app->formatter->timeZone` or `Yii::$app->timeZone`. |
 
 ---
 
@@ -107,13 +107,19 @@ The model attribute always contains a **user-facing value**.
 
 ---
 
-This behavior is fully compatible with `Yii::$app->formatter`. By including the timezone offset in the model attribute, the formatter correctly identifies the time as already localized.
+### Automatic Timezone Fallback
 
-Usage:
+If you don't explicitly set `displayTimeZone` in the behavior, it will automatically pick up your application's timezone from `Yii::$app->formatter->timeZone` or `Yii::$app->timeZone`. This ensures consistency across your application without extra configuration.
 
 ```php
-// No extra parsing needed in views
-<?= Yii::$app->formatter->asDateTime($model->published_at) ?>
+// In common/config/main.php
+'timeZone' => 'Asia/Tokyo',
+
+// In your Model - no displayTimeZone needed!
+[
+    'class' => DateTimeBehavior::class,
+    'attributes' => ['created_at'],
+],
 ```
 
 ---

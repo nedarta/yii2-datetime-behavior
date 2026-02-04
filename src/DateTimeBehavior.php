@@ -28,9 +28,9 @@ class DateTimeBehavior extends Behavior
 	public string $inputFormat = 'Y-m-d H:i';
 
 	/**
-	 * @var string|\Closure timezone where user inputs datetime
+	 * @var string|\Closure|null timezone where user inputs datetime. If null, uses Yii::$app->formatter->timeZone or Yii::$app->timeZone.
 	 */
-	public string|\Closure $displayTimeZone = 'UTC';
+	public string|\Closure|null $displayTimeZone = null;
 
 	/**
 	 * @var string database timezone (always UTC)
@@ -234,9 +234,16 @@ class DateTimeBehavior extends Behavior
 	protected function getDisplayTimeZone(): \DateTimeZone
 	{
 		$tz = $this->displayTimeZone;
+
+		if ($tz === null) {
+			// Fallback to Yii2 config
+			$tz = Yii::$app->formatter->timeZone ?? Yii::$app->timeZone;
+		}
+
 		if ($tz instanceof \Closure) {
 			$tz = call_user_func($tz);
 		}
+
 		return new \DateTimeZone($tz);
 	}
 
