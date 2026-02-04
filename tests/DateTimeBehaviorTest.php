@@ -9,6 +9,7 @@ use yii\db\ActiveRecord;
 /**
  * Test Model for DateTimeBehavior
  * 
+ * @coversDefaultClass \nedarta\behaviors\DateTimeBehavior
  * @property int $id
  * @property string $name
  * @property int|string $created_at
@@ -161,18 +162,6 @@ class DateTimeBehaviorTest extends TestCase
     protected function tearDown(): void
     {
         Yii::$app->db->createCommand()->dropTable('test_active_record')->execute();
-        
-        // Clean up error handlers
-        while (set_error_handler(function() {})) {
-            restore_error_handler();
-            restore_error_handler();
-        }
-        
-        while (set_exception_handler(function() {})) {
-            restore_exception_handler();
-            restore_exception_handler();
-        }
-        
         parent::tearDown();
     }
 
@@ -189,6 +178,13 @@ class DateTimeBehaviorTest extends TestCase
         };
     }
 
+    /**
+     * @covers ::beforeSave
+     * @covers ::parseInput
+     * @covers ::formatForDb
+     * @covers ::isDbFormat
+     * @covers ::isEmpty
+     */
     public function testUiToDbUnix()
     {
         $model = $this->getModel('unix');
@@ -203,6 +199,11 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals(1704103200, $model->created_at);
     }
 
+    /**
+     * @covers ::afterFind
+     * @covers ::createDateTimeFromDb
+     * @covers ::getDisplayTimeZone
+     */
     public function testDbToUiUnix()
     {
         // Insert raw data
@@ -214,6 +215,11 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals('2024-01-01 12:00 +02:00', $model->created_at, 'Should convert to Riga time with offset');
     }
 
+    /**
+     * @covers ::afterFind
+     * @covers ::beforeSave
+     * @covers ::formatForDb
+     */
     public function testUiToDbDateTime()
     {
         $model = $this->getModel('datetime');
@@ -224,6 +230,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals('2024-01-01 10:00:00', $inDb['created_at'], 'Database should contain UTC datetime string');
     }
 
+    /**
+     * @covers ::afterFind
+     * @covers ::createDateTimeFromDb
+     */
     public function testDbToUiDateTime()
     {
         Yii::$app->db->createCommand()->insert('test_active_record', [
@@ -234,6 +244,12 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals('2024-01-01 12:00 +02:00', $model->created_at, 'Should convert to Riga time with offset');
     }
 
+    /**
+     * @covers ::afterFind
+     * @covers ::beforeSave
+     * @covers ::createDateTimeFromDb
+     * @covers ::parseInput
+     */
     public function testAsiaTokyo()
     {
         // 10:00 UTC -> 19:00 Tokyo (JST is UTC+9)
@@ -245,6 +261,9 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals('2024-01-01 19:00 +09:00', $model->created_at, 'Should convert to Tokyo time (+9)');
     }
 
+    /**
+     * @covers ::getDisplayTimeZone
+     */
     public function testGlobalConfigFallback()
     {
         // Mock global timezone
@@ -264,6 +283,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals('2024-01-01 19:00 +09:00', $model->created_at, 'Should fallback to Yii::$app->timeZone');
     }
 
+    /**
+     * @covers ::beforeSave
+     * @covers ::formatForDb
+     */
     public function testDateOutput()
     {
         $model = $this->getModel('date');
@@ -279,6 +302,10 @@ class DateTimeBehaviorTest extends TestCase
     }
 
 
+    /**
+     * @covers ::beforeSave
+     * @covers ::formatForDb
+     */
     public function testTimeOutput()
     {
         $model = $this->getModel('time');
@@ -294,6 +321,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals($expected, $inDb['created_at'], 'Database should contain calculated UTC time string');
     }
 
+    /**
+     * @covers ::beforeSave
+     * @covers ::formatForDb
+     */
     public function testCustomOutput()
     {
         $model = $this->getModel('custom');
@@ -304,6 +335,59 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals('20240101100000', $inDb['created_at'], 'Database should contain custom format string');
     }
 
+    /**
+     * @covers ::normalize
+     * @covers ::formatForDb
+     */
+    public function testBatchNormalization()
+    {
+        $model = $this->getModel('unix');
+        $behavior = $model->getBehavior('dt');
+
+        $data = [
+            'name' => 'New Name',
+            'created_at' => '2024-01-01 12:00', // Riga -> 10:00 UTC
+        ];
+
+        $normalized = $behavior->normalize($data);
+
+        $this->assertEquals('New Name', $normalized['name']);
+        $this->assertEquals(1704103200, $normalized['created_at'], 'Should normalize attribute in array');
+    }
+
+    /**
+     * @covers ::normalize
+     */
+    public function testUpdateAll()
+    {
+        // 1. Setup existing records
+        Yii::$app->db->createCommand()->insert('test_active_record', ['name' => 'A', 'created_at' => 0])->execute();
+        Yii::$app->db->createCommand()->insert('test_active_record', ['name' => 'B', 'created_at' => 0])->execute();
+
+        $model = $this->getModel('unix');
+        $behavior = $model->getBehavior('dt');
+
+        // 2. Normalize data for updateAll
+        $updateData = $behavior->normalize([
+            'name' => 'Updated',
+            'created_at' => '2024-01-01 12:00', // Riga -> 10:00 UTC
+        ]);
+
+        // 3. Batch update
+        TestActiveRecord::updateAll($updateData);
+
+        // 4. Verify
+        $records = (new \yii\db\Query())->from('test_active_record')->all();
+        foreach ($records as $record) {
+            $this->assertEquals('Updated', $record['name']);
+            $this->assertEquals(1704103200, $record['created_at'], 'Batch update should use normalized UTC timestamp');
+        }
+    }
+
+    /**
+     * @covers ::afterFind
+     * @covers ::createDateTimeFromDb
+     */
     public function testZeroTimestampUnix()
     {
         // DB has 0
@@ -322,6 +406,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertNotEmpty($model->created_at);
     }
 
+    /**
+     * @covers ::toTimestamp
+     * @covers ::parseInput
+     */
     public function testToTimestamp()
     {
         $model = $this->getModel('unix');
@@ -343,6 +431,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertNull($model->getBehavior('dt')->toTimestamp('created_at'));
     }
 
+    /**
+     * @covers ::beforeSave
+     * @covers ::parseInput
+     */
     public function testUiInputVariations()
     {
         $model = $this->getModel('unix');
@@ -358,6 +450,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals(1704103200, $model->created_at, 'Should parse input with offset');
     }
 
+    /**
+     * @covers ::beforeSave
+     * @covers ::isDbFormat
+     */
     public function testSafetyCheckPreFormatted()
     {
         $model = $this->getModel('unix');
@@ -367,6 +463,10 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertEquals(1704103200, $model->created_at, 'Should remain integer');
     }
 
+    /**
+     * @covers ::beforeValidate
+     * @covers ::afterValidate
+     */
     public function testValidationRestore()
     {
         $model = $this->getModel('unix');

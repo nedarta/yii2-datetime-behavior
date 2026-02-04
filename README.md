@@ -45,16 +45,11 @@ class Post extends \yii\db\ActiveRecord
             [
                 'class' => DateTimeBehavior::class,
                 'attributes' => ['created_at', 'scheduled_at'],
-
-                // Database storage
-                'dbFormat' => 'unix',          // 'unix', 'datetime', 'date', 'time', or custom format like 'Ymd'
-                'serverTimeZone' => 'UTC',
-
-                // User-facing format
                 'inputFormat' => 'Y-m-d H:i',
-                'displayTimeZone' => function() {
-                    return Yii::$app->user->identity->timezone ?? 'Europe/Riga';
-                },
+                // Optional:
+                // 'dbFormat' => 'unix',          // default: 'unix'
+                // 'serverTimeZone' => 'UTC',     // default: 'UTC'
+                // 'displayTimeZone' => null,     // default: null (falls back to Yii::$app->timeZone)
             ],
         ];
     }
@@ -84,7 +79,7 @@ The model attribute always contains a **user-facing value**.
 | `attributes` | `array` | `[]` | Attributes to convert |
 | `dbFormat` | `string` | `unix` | `unix`, `datetime`, `date`, `time`, or custom PHP format string (e.g. `Y-m-d`) |
 | `inputFormat` | `string` | `Y-m-d H:i` | User / UI format |
-| `serverTimeZone` | `string` | `UTC` | Database timezone |
+| `serverTimeZone` | `string` | `UTC` | Database timezone (usually UTC) |
 | `displayTimeZone` | `string|null` | `null` | User-facing timezone. If `null`, falls back to `Yii::$app->formatter->timeZone` or `Yii::$app->timeZone`. |
 
 ---
@@ -136,6 +131,24 @@ $timestamp = $model->getBehavior('dt')->toTimestamp('created_at');
 
 ---
 
+## Batch Operations
+
+Since `ActiveRecord::updateAll()` and `insertAll()` do not trigger model behaviors, you can use the `normalize()` method to convert your data array before passing it to the database:
+
+```php
+$model = new Post();
+$dt = $model->getBehavior('dt');
+
+// Normalize UI-formatted data for batch update
+$data = $dt->normalize([
+    'status' => Post::STATUS_PUBLISHED,
+    'published_at' => '2024-01-01 12:00', // Will be converted to UTC/Unix
+]);
+
+Post::updateAll($data, ['author_id' => 1]);
+```
+
+---
 
 ## What This Extension Does NOT Do
 
@@ -178,7 +191,6 @@ Run the test suite via Composer:
 ```bash
 composer test
 ```
-**Note:** You may see "Risky" test warnings in the output. This is expected behavior due to Yii2's global error handler manipulation during tests and does not indicate test failure.
 
 ---
 
@@ -192,6 +204,7 @@ MIT
 
 - [x] PHPUnit test suite
 - [x] Support for additional database formats (date, time, custom)
+- [x] Support for batch operations (e.g. `updateAll()`)
 - [ ] Read-only / write-only modes
 - [ ] Integration with popular date/time widgets
 - [ ] Support for batch operations (e.g. `updateAll()`)

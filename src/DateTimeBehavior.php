@@ -134,22 +134,57 @@ class DateTimeBehavior extends Behavior
 				continue;
 			}
 
-			// Convert to Server Timezone (UTC)
-			$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
+			$this->owner->{$attribute} = $this->formatForDb($dt);
+		}
+	}
 
-			// Store in DB format
-			if ($this->dbFormat === 'unix') {
-				$this->owner->{$attribute} = $dt->getTimestamp();
-			} else {
-				$format = match ($this->dbFormat) {
-					'datetime' => 'Y-m-d H:i:s',
-					'date' => 'Y-m-d',
-					'time' => 'H:i:s',
-					default => $this->dbFormat,
-				};
-				$this->owner->{$attribute} = $dt->format($format);
+	/**
+	 * Normalize an array of data (UI format → DB format)
+	 * Useful for batch operations like updateAll()
+	 * 
+	 * @param array $data
+	 * @return array
+	 */
+	public function normalize(array $data): array
+	{
+		foreach ($data as $attribute => $value) {
+			if (!in_array($attribute, $this->attributes)) {
+				continue;
+			}
+
+			if ($this->isEmpty($value) || $this->isDbFormat($value)) {
+				continue;
+			}
+
+			$dt = $this->parseInput($value);
+			if ($dt !== false) {
+				$data[$attribute] = $this->formatForDb($dt);
 			}
 		}
+
+		return $data;
+	}
+
+	/**
+	 * Helper to format DateTime for DB based on configuration
+	 */
+	protected function formatForDb(\DateTime $dt): string|int
+	{
+		// Convert to Server Timezone (UTC)
+		$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
+
+		if ($this->dbFormat === 'unix') {
+			return $dt->getTimestamp();
+		}
+
+		$format = match ($this->dbFormat) {
+			'datetime' => 'Y-m-d H:i:s',
+			'date' => 'Y-m-d',
+			'time' => 'H:i:s',
+			default => $this->dbFormat,
+		};
+
+		return $dt->format($format);
 	}
 
 	/**

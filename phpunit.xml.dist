@@ -3,9 +3,9 @@
          xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
          bootstrap="tests/bootstrap.php"
          colors="true"
-         beStrictAboutChangesToGlobalState="false"
-         beStrictAboutTestsThatDoNotTestAnything="false"
-         failOnRisky="false"
+         beStrictAboutChangesToGlobalState="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         failOnRisky="true"
          failOnWarning="false"
          cacheDirectory=".phpunit.cache">
     <testsuites>
