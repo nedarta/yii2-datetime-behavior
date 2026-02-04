@@ -566,4 +566,25 @@ class DateTimeBehaviorTest extends TestCase
         $this->assertNull($behavior->toDbValue(''));
         $this->assertNull($behavior->toDbValue(null));
     }
+
+    /**
+     * @covers ::now
+     */
+    public function testStaticNow()
+    {
+        // For unix format
+        $nowUnix = DateTimeBehavior::now(TestActiveRecord::class);
+        $this->assertIsInt($nowUnix);
+        $this->assertGreaterThan(1700000000, $nowUnix);
+
+        // For datetime format (using Tokyo model)
+        // NOTE: TestActiveRecordTokyo actually uses dbFormat => unix in current tests
+        $nowTokyo = DateTimeBehavior::now(TestActiveRecordTokyo::class);
+        $this->assertIsInt($nowTokyo);
+
+        // For actual datetime format
+        $nowDateTime = DateTimeBehavior::now(TestActiveRecordDateTime::class);
+        $this->assertIsString($nowDateTime);
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $nowDateTime);
+    }
 }

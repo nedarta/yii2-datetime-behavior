@@ -13,6 +13,33 @@ use yii\db\ActiveRecord;
 class DateTimeBehavior extends Behavior
 {
 	/**
+	 * Static helper to get 'now' in the database format for a specific model.
+	 * Usage: DateTimeBehavior::now(Event::class)
+	 * 
+	 * @param string|ActiveRecord $model Model class name or instance
+	 * @return string|int
+	 */
+	public static function now(string|ActiveRecord $model): string|int
+	{
+		$instance = is_string($model) ? new $model() : $model;
+		$behavior = null;
+		
+		foreach ($instance->getBehaviors() as $b) {
+			if ($b instanceof self) {
+				$behavior = $b;
+				break;
+			}
+		}
+
+		if (!$behavior) {
+			// Fallback to UTC unix timestamp if behavior is not found
+			return time();
+		}
+
+		return $behavior->toDbValue('now');
+	}
+
+	/**
 	 * @var array attributes to handle
 	 */
 	public array $attributes = [];

@@ -133,16 +133,24 @@ $timestamp = $model->getBehavior('dt')->toTimestamp('created_at');
 
 ## Querying
 
-When querying the database (e.g., filtering for "today's events"), you must compare against UTC time. You can use the `toDbValue()` helper to correctly format your filter values:
+When querying the database (e.g., filtering for "today's events"), you must compare against UTC time. You can use the `toDbValue()` helper to correctly format your filter values.
+
+### Option 1: Static Helper (Simplest)
+You don't need a model instance, just the class name:
+
+```php
+use nedarta\behaviors\DateTimeBehavior;
+
+$now = DateTimeBehavior::now(Event::class);
+$query->andWhere(['>=', 'datetime', $now]);
+```
+
+### Option 2: Direct Model Call
+If you have a model instance, you can call the behavior methods directly on it:
 
 ```php
 $model = new Event();
-$dt = $model->getBehavior('dt');
-
-// Correctly format 'now' (or any local date string) for the DB
-$now = $dt->toDbValue('now'); 
-
-$query->andWhere(['>=', 'datetime', $now]);
+$query->andWhere(['>=', 'datetime', $model->toDbValue('now')]);
 ```
 
 Alternatively, if you are using `unix` timestamps, you can simply use the PHP `time()` function:
