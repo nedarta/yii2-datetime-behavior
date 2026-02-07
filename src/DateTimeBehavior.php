@@ -1,4 +1,5 @@
 <?php
+
 namespace nedarta\behaviors;
 
 use Yii;
@@ -6,7 +7,8 @@ use yii\base\Behavior;
 use yii\db\ActiveRecord;
 
 /**
- * DateTime Behavior for converting between unix timestamps and formatted dates
+ * DateTime Behavior for converting between unix timestamps and formatted dates.
+ * Fixed to handle 'time' and 'date' formats as Wall-Clock values to avoid 2h shifts.
  *
  * @property ActiveRecord $owner
  */
@@ -14,16 +16,12 @@ class DateTimeBehavior extends Behavior
 {
 	/**
 	 * Static helper to get 'now' in the database format for a specific model.
-	 * Usage: DateTimeBehavior::now(Event::class)
-	 * 
-	 * @param string|ActiveRecord $model Model class name or instance
-	 * @return string|int
 	 */
 	public static function now(string|ActiveRecord $model): string|int
 	{
 		$instance = is_string($model) ? new $model() : $model;
 		$behavior = null;
-		
+
 		foreach ($instance->getBehaviors() as $b) {
 			if ($b instanceof self) {
 				$behavior = $b;
@@ -32,41 +30,18 @@ class DateTimeBehavior extends Behavior
 		}
 
 		if (!$behavior) {
-			// Fallback to UTC unix timestamp if behavior is not found
 			return time();
 		}
 
 		return $behavior->toDbValue('now');
 	}
 
-	/**
-	 * @var array attributes to handle
-	 */
 	public array $attributes = [];
-
-	/**
-	 * @var string unix|datetime|date|time or any custom PHP date format string (e.g. 'Ymd')
-	 */
-	public string $dbFormat = 'unix';
-
-	/**
-	 * @var string input format from UI (for parsing and formatting)
-	 */
+	public string $dbFormat = 'unix'; // unix|datetime|date|time
 	public string $inputFormat = 'Y-m-d H:i';
-
-	/**
-	 * @var string|\Closure|null timezone where user inputs datetime. If null, uses Yii::$app->formatter->timeZone or Yii::$app->timeZone.
-	 */
 	public string|\Closure|null $displayTimeZone = null;
-
-	/**
-	 * @var string database timezone (always UTC)
-	 */
 	public string $serverTimeZone = 'UTC';
 
-	/**
-	 * @var array temporary storage for original values during validation
-	 */
 	private array $_originalValues = [];
 
 	public function events(): array
@@ -81,8 +56,7 @@ class DateTimeBehavior extends Behavior
 	}
 
 	/**
-	 * Convert DB value (UTC) → formatted string (display timezone)
-	 * This runs when loading from database
+	 * DB (UTC) → UI (Localized)
 	 */
 	public function afterFind(): void
 	{
@@ -93,24 +67,26 @@ class DateTimeBehavior extends Behavior
 				continue;
 			}
 
-			// Create DateTime from DB value
 			$dt = $this->createDateTimeFromDb($value);
-
 			if ($dt === false) {
 				continue;
 			}
 
-			// Convert to display timezone
+			// Convert to user's display timezone
 			$dt->setTimezone($this->getDisplayTimeZone());
 
-			// Append offset so Yii formatter knows it's already localized
-			$this->owner->{$attribute} = $dt->format($this->inputFormat . ' P');
+			/**
+			 * Only append the offset 'P' for points in time (unix/datetime).
+			 * For 'date' or 'time', we treat them as Wall-Clock time.
+			 * This prevents Yii Formatter from shifting the value again.
+			 */
+			$isPointInTime = in_array($this->dbFormat, ['unix', 'datetime']);
+			$format = $isPointInTime ? ($this->inputFormat . ' P') : $this->inputFormat;
+
+			$this->owner->{$attribute} = $dt->format($format);
 		}
 	}
 
-	/**
-	 * Store original values before validation
-	 */
 	public function beforeValidate(): void
 	{
 		foreach ($this->attributes as $attribute) {
@@ -118,28 +94,18 @@ class DateTimeBehavior extends Behavior
 		}
 	}
 
-	/**
-	 * Restore original values if validation failed
-	 */
 	public function afterValidate(): void
 	{
 		if ($this->owner->hasErrors()) {
 			foreach ($this->attributes as $attribute) {
-				// Restore original value so user sees what they typed
 				if ($this->owner->hasErrors($attribute)) {
 					$this->owner->{$attribute} = $this->_originalValues[$attribute] ?? null;
 				}
 			}
 		}
-		
-		// Clear temporary storage
 		$this->_originalValues = [];
 	}
 
-	/**
-	 * Convert UI string → DB value (UTC)
-	 * This runs before saving to database
-	 */
 	public function beforeSave(): void
 	{
 		foreach ($this->attributes as $attribute) {
@@ -147,33 +113,16 @@ class DateTimeBehavior extends Behavior
 		}
 	}
 
-	/**
-	 * Normalize an array of data (UI format → DB format)
-	 * Useful for batch operations like updateAll()
-	 * 
-	 * @param array $data
-	 * @return array
-	 */
 	public function normalize(array $data): array
 	{
 		foreach ($data as $attribute => $value) {
-			if (!in_array($attribute, $this->attributes)) {
-				continue;
+			if (in_array($attribute, $this->attributes)) {
+				$data[$attribute] = $this->toDbValue($value);
 			}
-
-			$data[$attribute] = $this->toDbValue($value);
 		}
-
 		return $data;
 	}
 
-	/**
-	 * Convert any value to database format (UTC + correct dbFormat)
-	 * Useful for query filters.
-	 * 
-	 * @param mixed $value UI string, 'now', or raw value
-	 * @return string|int|null
-	 */
 	public function toDbValue(mixed $value): string|int|null
 	{
 		if ($this->isEmpty($value)) {
@@ -185,27 +134,27 @@ class DateTimeBehavior extends Behavior
 			return $this->formatForDb($dt);
 		}
 
-		// If it's already in DB format, return as is (to avoid double conversion)
 		if ($this->isDbFormat($value)) {
 			return $value;
 		}
 
 		$dt = $this->parseInput($value);
 		if ($dt === false) {
-			// Could not parse as input format - return as is for DB to maybe handle or fail
 			return $value;
 		}
 
 		return $this->formatForDb($dt);
 	}
 
-	/**
-	 * Helper to format DateTime for DB based on configuration
-	 */
 	protected function formatForDb(\DateTime $dt): string|int
 	{
-		// Convert to Server Timezone (UTC)
-		$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
+		/**
+		 * For 'date' and 'time', we usually want the literal value entered by the user
+		 * (Wall-Clock). We only convert to UTC for full timestamps.
+		 */
+		if (in_array($this->dbFormat, ['unix', 'datetime'])) {
+			$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
+		}
 
 		if ($this->dbFormat === 'unix') {
 			return $dt->getTimestamp();
@@ -213,146 +162,96 @@ class DateTimeBehavior extends Behavior
 
 		$format = match ($this->dbFormat) {
 			'datetime' => 'Y-m-d H:i:s',
-			'date' => 'Y-m-d',
-			'time' => 'H:i:s',
-			default => $this->dbFormat,
+			'date'     => 'Y-m-d',
+			'time'     => 'H:i:s',
+			default    => $this->dbFormat,
 		};
 
 		return $dt->format($format);
 	}
 
-	/**
-	 * Helper to parse input string using behavior config
-	 */
 	protected function parseInput(mixed $value): \DateTime|false
 	{
 		$value = (string)$value;
-		
-		// Try parsing with timezone offset first (from afterFind)
-		$dt = \DateTime::createFromFormat(
-			'!' . $this->inputFormat . ' P',
-			$value,
-			$this->getDisplayTimeZone()
-		);
+		$tz = $this->getDisplayTimeZone();
+
+		// Try with timezone offset (from afterFind)
+		$dt = \DateTime::createFromFormat('!' . $this->inputFormat . ' P', $value, $tz);
 
 		if ($dt === false) {
-			// Try parsing without offset (from UI form)
-			$dt = \DateTime::createFromFormat(
-				'!' . $this->inputFormat,
-				$value,
-				$this->getDisplayTimeZone()
-			);
+			// Try without offset (from user input)
+			$dt = \DateTime::createFromFormat('!' . $this->inputFormat, $value, $tz);
 		}
 
 		return $dt;
 	}
 
-	/**
-	 * Get UTC timestamp for an attribute, handling both raw and formatted values
-	 */
-	public function toTimestamp(string $attribute): ?int
+	protected function createDateTimeFromDb(mixed $value): \DateTime|false
 	{
-		$value = $this->owner->{$attribute};
+		$tz = new \DateTimeZone($this->serverTimeZone);
 
-		if ($this->isEmpty($value)) {
-			return null;
+		if ($this->dbFormat === 'unix') {
+			if (!is_numeric($value)) return false;
+			$dt = new \DateTime('now', $tz);
+			$dt->setTimestamp((int)$value);
+			return $dt;
 		}
 
-		if (is_numeric($value)) {
-			return (int)$value;
+		// Logic for 'time': Use current date context to ensure DST is correct
+		if ($this->dbFormat === 'time') {
+			$dt = new \DateTime('today', $tz);
+			$parts = explode(':', (string)$value);
+			if (count($parts) >= 2) {
+				$dt->setTime((int)$parts[0], (int)$parts[1], (int)($parts[2] ?? 0));
+				return $dt;
+			}
+			return false;
 		}
 
-		$dt = $this->parseInput($value);
-		if ($dt === false) {
-			return null;
-		}
+		$format = match ($this->dbFormat) {
+			'datetime' => 'Y-m-d H:i:s',
+			'date'     => 'Y-m-d',
+			default    => $this->dbFormat,
+		};
 
-		// Convert to UTC to get a standard timestamp
-		$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
-		return $dt->getTimestamp();
+		// Use ! to reset fields not in format to 1970-01-01
+		return \DateTime::createFromFormat('!' . $format, (string)$value, $tz);
 	}
 
-	/**
-	 * Check if value is already in database format
-	 */
 	protected function isDbFormat(mixed $value): bool
 	{
 		if ($this->dbFormat === 'unix') {
 			return is_int($value) || (is_string($value) && ctype_digit($value));
 		}
 
-		if (!is_string($value)) {
-			return false;
-		}
+		if (!is_string($value)) return false;
 
 		$format = match ($this->dbFormat) {
 			'datetime' => 'Y-m-d H:i:s',
-			'date' => 'Y-m-d',
-			'time' => 'H:i:s',
-			default => $this->dbFormat,
+			'date'     => 'Y-m-d',
+			'time'     => 'H:i:s',
+			default    => $this->dbFormat,
 		};
 
-		// Try to parse it. If it parses perfectly, it's likely the DB format.
 		$dt = \DateTime::createFromFormat('!' . $format, $value);
 		return $dt && $dt->format($format) === $value;
 	}
 
-	/**
-	 * Get display timezone (resolve closure if needed)
-	 */
 	protected function getDisplayTimeZone(): \DateTimeZone
 	{
 		$tz = $this->displayTimeZone;
-
 		if ($tz === null) {
-			// Fallback to Yii2 config
 			$tz = Yii::$app->formatter->timeZone ?? Yii::$app->timeZone;
 		}
-
 		if ($tz instanceof \Closure) {
 			$tz = call_user_func($tz);
 		}
-
 		return new \DateTimeZone($tz);
 	}
 
-	/**
-	 * Create DateTime object from database value
-	 */
-	protected function createDateTimeFromDb(mixed $value): \DateTime|false
-	{
-		$tz = new \DateTimeZone($this->serverTimeZone);
-
-		if ($this->dbFormat === 'unix') {
-			if (!is_numeric($value)) {
-				return false;
-			}
-			$dt = new \DateTime('now', $tz);
-			$dt->setTimestamp((int)$value);
-			return $dt;
-		}
-
-		$format = match ($this->dbFormat) {
-			'datetime' => 'Y-m-d H:i:s',
-			'date' => 'Y-m-d',
-			'time' => 'H:i:s',
-			default => $this->dbFormat,
-		};
-
-		// Use ! to reset time for formats that don't include it
-		return \DateTime::createFromFormat('!' . $format, (string)$value, $tz);
-	}
-
-	/**
-	 * Check if value is empty
-	 */
 	protected function isEmpty(mixed $value): bool
 	{
-		// Don't treat 0 as empty for unix timestamps (it's a valid date: 1970-01-01)
-		if ($this->dbFormat === 'unix' && $value === 0) {
-			return false;
-		}
-		
+		if ($this->dbFormat === 'unix' && $value === 0) return false;
 		return $value === null || $value === '';
 	}
 }
