@@ -76,12 +76,18 @@ class DateTimeBehavior extends Behavior
 			$dt->setTimezone($this->getDisplayTimeZone());
 
 			/**
-			 * Only append the offset 'P' for points in time (unix/datetime).
-			 * For 'date' or 'time', we treat them as Wall-Clock time.
-			 * This prevents Yii Formatter from shifting the value again.
+			 * For 'date' format: Show as "2024-01-01 02:00 +02:00" (wall-clock at midnight UTC becomes local time)
+			 * For 'time' format: Show as time only without offset
+			 * For point-in-time formats (unix/datetime): Show with offset
 			 */
-			$isPointInTime = in_array($this->dbFormat, ['unix', 'datetime']);
-			$format = $isPointInTime ? ($this->inputFormat . ' P') : $this->inputFormat;
+			if ($this->dbFormat === 'date') {
+				$format = $this->inputFormat . ' P';
+			} elseif ($this->dbFormat === 'time') {
+				$format = $this->inputFormat;
+			} else {
+				// unix or datetime
+				$format = $this->inputFormat . ' P';
+			}
 
 			$this->owner->{$attribute} = $dt->format($format);
 		}
@@ -146,15 +152,43 @@ class DateTimeBehavior extends Behavior
 		return $this->formatForDb($dt);
 	}
 
+	/**
+	 * Convert an attribute value to Unix timestamp.
+	 * Handles various input formats: UI format, display format with offset, and raw timestamp.
+	 *
+	 * @param string $attribute The attribute name
+	 * @return int|null The Unix timestamp, or null if empty
+	 */
+	public function toTimestamp(string $attribute): int|null
+	{
+		$value = $this->owner->{$attribute};
+
+		if ($this->isEmpty($value)) {
+			return null;
+		}
+
+		// If already a numeric timestamp, return as-is
+		if (is_numeric($value) && !str_contains((string)$value, '-') && !str_contains((string)$value, ':')) {
+			return (int)$value;
+		}
+
+		// Parse the input value
+		$dt = $this->parseInput($value);
+		if ($dt === false) {
+			return null;
+		}
+
+		// Return the Unix timestamp
+		return $dt->setTimezone(new \DateTimeZone('UTC'))->getTimestamp();
+	}
+
 	protected function formatForDb(\DateTime $dt): string|int
 	{
 		/**
-		 * For 'date' and 'time', we usually want the literal value entered by the user
-		 * (Wall-Clock). We only convert to UTC for full timestamps.
+		 * Always convert to UTC before formatting, regardless of the format.
+		 * This ensures consistent database storage of timestamps.
 		 */
-		if (in_array($this->dbFormat, ['unix', 'datetime'])) {
-			$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
-		}
+		$dt->setTimezone(new \DateTimeZone($this->serverTimeZone));
 
 		if ($this->dbFormat === 'unix') {
 			return $dt->getTimestamp();
