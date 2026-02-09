@@ -273,10 +273,8 @@ class DateTimeBehavior extends Behavior
 
 	protected function getDisplayTimeZone(): \DateTimeZone
 	{
-		$tz = $this->displayTimeZone;
-		if ($tz === null) {
-			$tz = Yii::$app->formatter->timeZone ?? Yii::$app->timeZone;
-		}
+		$tz = Yii::$app->formatter->timeZone ?? Yii::$app->timeZone ?? $this->displayTimeZone;
+
 		if ($tz instanceof \Closure) {
 			$tz = call_user_func($tz);
 		}

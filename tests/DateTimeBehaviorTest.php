@@ -150,6 +150,14 @@ class DateTimeBehaviorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        
+        // Set default App timezone to 'Europe/Riga' to match what most tests expect.
+        // Since precedence is now App > Behavior, we must control the App timezone to test localized outputs.
+        Yii::$app->timeZone = 'Europe/Riga';
+        if (Yii::$app->has('formatter')) {
+            Yii::$app->formatter->timeZone = null;
+        }
+
         // 1. Setup DB Table
         Yii::$app->db->createCommand()->createTable('test_active_record', [
             'id' => 'pk',
@@ -253,12 +261,60 @@ class DateTimeBehaviorTest extends TestCase
     public function testAsiaTokyo()
     {
         // 10:00 UTC -> 19:00 Tokyo (JST is UTC+9)
+        // With new precedence (App > Behavior), existing behavior property is ignored.
+        // We must explicitly set App Timezone to achieve the desired localized output.
+        $oldAppTz = Yii::$app->timeZone;
+        Yii::$app->timeZone = 'Asia/Tokyo';
+
         Yii::$app->db->createCommand()->insert('test_active_record', [
             'created_at' => 1704103200, // 10:00 UTC
         ])->execute();
 
         $model = TestActiveRecordTokyo::find()->one();
+        
         $this->assertEquals('2024-01-01 19:00 +09:00', $model->created_at, 'Should convert to Tokyo time (+9)');
+        
+        // Restore
+        Yii::$app->timeZone = $oldAppTz;
+    }
+
+    /**
+     * @covers ::getDisplayTimeZone
+     */
+    public function testFormatterPrecedence()
+    {
+        // 1. App = UTC, Formatter = Riga. 
+        // Logic should pick Formatter (Riga) over App (UTC)
+        
+        $oldAppTz = Yii::$app->timeZone;
+        Yii::$app->timeZone = 'UTC';
+
+        $originalFormatter = Yii::$app->has('formatter') ? Yii::$app->get('formatter') : null;
+        Yii::$app->set('formatter', [
+            'class' => 'yii\i18n\Formatter',
+            'timeZone' => 'Europe/Riga',
+        ]);
+        
+        // Use a model that has NO specific TZ set (fallback to global)
+        $model = new TestActiveRecordFallback();
+        
+        // Insert 10:00 UTC
+        Yii::$app->db->createCommand()->insert('test_active_record', [
+             'created_at' => 1704103200, 
+        ])->execute();
+        
+        $found = TestActiveRecordFallback::find()->one();
+        
+        // Should be 12:00 Riga (+2)
+        $this->assertEquals('2024-01-01 12:00 +02:00', $found->created_at, 'Formatter TZ should take precedence over App TZ');
+
+        // Cleanup
+        Yii::$app->timeZone = $oldAppTz;
+        if ($originalFormatter) {
+            Yii::$app->set('formatter', $originalFormatter);
+        } else {
+            Yii::$app->clear('formatter');
+        }
     }
 
     /**
